@@ -94,13 +94,13 @@
     <h1>💸 Ausgaben Tracker</h1>
     <p>Melde dich an oder erstelle ein Konto.</p>
     <div class="auth-tabs">
-      <button class="active" id="tab-in"  onclick="setTab('in')">Anmelden</button>
-      <button           id="tab-up" onclick="setTab('up')">Registrieren</button>
+      <button class="active" id="tab-in">Anmelden</button>
+      <button id="tab-up">Registrieren</button>
     </div>
     <div id="auth-msg" class="auth-msg"></div>
     <div class="fg"><label>E-Mail</label><input type="email"    id="a-email" placeholder="name@example.com" /></div>
     <div class="fg"><label>Passwort</label><input type="password" id="a-pw"    placeholder="Passwort" /></div>
-    <button class="btn" id="a-btn" onclick="doAuth()">Anmelden</button>
+    <button class="btn" id="a-btn">Anmelden</button>
   </div>
 </div>
 
@@ -110,7 +110,7 @@
     <div class="hright">
       <span id="h-date"></span>
       <span id="h-email" style="color:var(--accent2)"></span>
-      <button class="out-btn" onclick="db.auth.signOut()">Abmelden</button>
+      <button class="out-btn" id="out-btn">Abmelden</button>
     </div>
   </header>
 
@@ -142,7 +142,7 @@
           </div>
           <div class="fg"><label>Datum</label><input type="date" id="i-date" /></div>
         </div>
-        <button class="btn" id="add-btn" onclick="addExpense()">Eintragen</button>
+        <button class="btn" id="add-btn">Eintragen</button>
       </div>
 
       <div class="card">
@@ -304,7 +304,7 @@ function itemHTML(e, showDate) {
       ${showDate ? `<div class="meta">${e.date}</div>` : ''}
     </div>
     <div class="amt">${chf(e.amount)}</div>
-    <button class="del" onclick="del('${e.id}')">✕</button>
+    <button class="del" data-id="${e.id}">✕</button>
   </div>`;
 }
 
@@ -371,7 +371,13 @@ async function del(id) {
   await load();
 }
 
-// ── Tabs ──────────────────────────────────────────────
+// ── Event Listeners ───────────────────────────────────
+document.getElementById('tab-in').addEventListener('click', () => setTab('in'));
+document.getElementById('tab-up').addEventListener('click', () => setTab('up'));
+document.getElementById('a-btn').addEventListener('click', doAuth);
+document.getElementById('out-btn').addEventListener('click', () => db.auth.signOut());
+document.getElementById('add-btn').addEventListener('click', addExpense);
+
 document.querySelectorAll('.tabs button').forEach(btn => {
   btn.addEventListener('click', () => {
     document.querySelectorAll('.tabs button').forEach(b => b.classList.remove('active'));
@@ -381,7 +387,11 @@ document.querySelectorAll('.tabs button').forEach(btn => {
   });
 });
 
-// ── Enter-Taste ───────────────────────────────────────
+document.addEventListener('click', e => {
+  const btn = e.target.closest('[data-id]');
+  if (btn) del(btn.dataset.id);
+});
+
 ['a-email','a-pw'].forEach(id => document.getElementById(id).addEventListener('keydown', e => { if (e.key === 'Enter') doAuth(); }));
 ['i-amt','i-desc'].forEach(id => document.getElementById(id).addEventListener('keydown', e => { if (e.key === 'Enter') addExpense(); }));
 
