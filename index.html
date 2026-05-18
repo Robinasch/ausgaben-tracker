@@ -1,0 +1,399 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Ausgaben Tracker</title>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --bg: #0f1117; --surface: #1a1d27; --surface2: #242736; --border: #2e3248;
+      --accent: #6c63ff; --accent2: #8b84ff;
+      --red: #ff6b6b; --green: #51cf66; --yellow: #ffd43b;
+      --text: #e8eaf6; --muted: #8b8fa8; --r: 12px;
+    }
+    body { background: var(--bg); color: var(--text); font-family: 'Segoe UI', system-ui, sans-serif; min-height: 100vh; }
+
+    /* AUTH */
+    #auth-screen { display: flex; align-items: center; justify-content: center; min-height: 100vh; padding: 1rem; }
+    .auth-box { background: var(--surface); border: 1px solid var(--border); border-radius: var(--r); padding: 2.5rem 2rem; width: 100%; max-width: 400px; }
+    .auth-box h1 { font-size: 1.5rem; color: var(--accent2); margin-bottom: .3rem; }
+    .auth-box p  { color: var(--muted); font-size: .9rem; margin-bottom: 2rem; }
+    .auth-tabs { display: flex; gap: .5rem; margin-bottom: 1.5rem; }
+    .auth-tabs button { flex: 1; background: var(--surface2); border: 1px solid var(--border); color: var(--muted); border-radius: 8px; padding: .5rem; font-size: .9rem; cursor: pointer; transition: all .15s; }
+    .auth-tabs button.active { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 600; }
+    .auth-msg { border-radius: 8px; padding: .65rem 1rem; font-size: .85rem; margin-bottom: 1rem; display: none; }
+    .auth-msg.err { background: rgba(255,107,107,.12); border: 1px solid var(--red); color: var(--red); display: block; }
+    .auth-msg.ok  { background: rgba(81,207,102,.12);  border: 1px solid var(--green); color: var(--green); display: block; }
+
+    /* SHARED FORM */
+    .fg { margin-bottom: 1rem; }
+    .fg label { display: block; font-size: .8rem; color: var(--muted); margin-bottom: .35rem; }
+    .fg input, .fg select { width: 100%; background: var(--surface2); border: 1px solid var(--border); color: var(--text); border-radius: 8px; padding: .7rem .9rem; font-size: .95rem; outline: none; transition: border-color .15s; }
+    .fg input:focus, .fg select:focus { border-color: var(--accent); }
+    .fg select option { background: var(--surface2); }
+    .row2 { display: grid; grid-template-columns: 1fr 1fr; gap: .8rem; }
+    .btn { width: 100%; background: var(--accent); color: #fff; border: none; border-radius: 8px; padding: .75rem; font-size: 1rem; font-weight: 600; cursor: pointer; margin-top: .3rem; transition: background .15s; }
+    .btn:hover { background: var(--accent2); }
+    .btn:disabled { opacity: .5; cursor: default; }
+
+    /* APP */
+    #app-screen { display: none; }
+    header { background: var(--surface); border-bottom: 1px solid var(--border); padding: 1rem 2rem; display: flex; align-items: center; justify-content: space-between; gap: 1rem; flex-wrap: wrap; }
+    header h1 { font-size: 1.3rem; font-weight: 700; color: var(--accent2); }
+    .hright { display: flex; align-items: center; gap: 1rem; }
+    .hright span { color: var(--muted); font-size: .82rem; }
+    .out-btn { background: var(--surface2); border: 1px solid var(--border); color: var(--muted); border-radius: 8px; padding: .4rem .9rem; font-size: .82rem; cursor: pointer; transition: all .15s; }
+    .out-btn:hover { border-color: var(--red); color: var(--red); }
+
+    .main { max-width: 1100px; margin: 0 auto; padding: 2rem 1rem; display: grid; gap: 1.5rem; }
+
+    .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 1rem; }
+    .stat { background: var(--surface); border: 1px solid var(--border); border-radius: var(--r); padding: 1.2rem 1.4rem; }
+    .stat .lbl { font-size: .75rem; color: var(--muted); text-transform: uppercase; letter-spacing: .05em; margin-bottom: .4rem; }
+    .stat .val { font-size: 1.6rem; font-weight: 700; }
+    .red { color: var(--red); } .yellow { color: var(--yellow); } .accent { color: var(--accent2); } .green { color: var(--green); }
+
+    .g2 { display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem; }
+    @media (max-width: 750px) { .g2 { grid-template-columns: 1fr; } }
+
+    .card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--r); padding: 1.5rem; }
+    .card h2 { font-size: .95rem; font-weight: 600; margin-bottom: 1.1rem; }
+
+    .list { display: flex; flex-direction: column; gap: .55rem; max-height: 340px; overflow-y: auto; }
+    .item { display: flex; align-items: center; gap: .5rem; background: var(--surface2); border-radius: 8px; padding: .65rem .9rem; }
+    .item .inf { flex: 1; min-width: 0; }
+    .item .desc { font-size: .88rem; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .item .meta { font-size: .72rem; color: var(--muted); margin-top: .12rem; }
+    .item .amt  { font-size: .95rem; font-weight: 700; color: var(--red); white-space: nowrap; }
+    .item .del  { background: none; border: none; color: var(--muted); cursor: pointer; padding: .2rem .35rem; border-radius: 4px; font-size: .9rem; transition: color .1s; }
+    .item .del:hover { color: var(--red); }
+    .badge { display: inline-block; font-size: .66rem; padding: .13rem .45rem; border-radius: 99px; font-weight: 600; margin-left: .35rem; }
+    .empty { text-align: center; color: var(--muted); padding: 2rem; font-size: .88rem; }
+
+    .tabs { display: flex; gap: .5rem; margin-bottom: 1.1rem; }
+    .tabs button { background: var(--surface2); border: 1px solid var(--border); color: var(--muted); border-radius: 8px; padding: .4rem .9rem; font-size: .83rem; cursor: pointer; transition: all .15s; }
+    .tabs button.active { background: var(--accent); border-color: var(--accent); color: #fff; }
+    canvas { max-height: 220px; }
+
+    #toast { position: fixed; bottom: 2rem; left: 50%; transform: translateX(-50%) translateY(130%); background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: .65rem 1.3rem; font-size: .88rem; transition: transform .22s; z-index: 999; white-space: nowrap; }
+    #toast.show { transform: translateX(-50%) translateY(0); }
+    #toast.ok  { border-color: var(--green); color: var(--green); }
+    #toast.err { border-color: var(--red);   color: var(--red); }
+
+    ::-webkit-scrollbar { width: 5px; }
+    ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+  </style>
+</head>
+<body>
+
+<div id="auth-screen">
+  <div class="auth-box">
+    <h1>💸 Ausgaben Tracker</h1>
+    <p>Melde dich an oder erstelle ein Konto.</p>
+    <div class="auth-tabs">
+      <button class="active" id="tab-in"  onclick="setTab('in')">Anmelden</button>
+      <button           id="tab-up" onclick="setTab('up')">Registrieren</button>
+    </div>
+    <div id="auth-msg" class="auth-msg"></div>
+    <div class="fg"><label>E-Mail</label><input type="email"    id="a-email" placeholder="name@example.com" /></div>
+    <div class="fg"><label>Passwort</label><input type="password" id="a-pw"    placeholder="Passwort" /></div>
+    <button class="btn" id="a-btn" onclick="doAuth()">Anmelden</button>
+  </div>
+</div>
+
+<div id="app-screen">
+  <header>
+    <h1>💸 Ausgaben Tracker</h1>
+    <div class="hright">
+      <span id="h-date"></span>
+      <span id="h-email" style="color:var(--accent2)"></span>
+      <button class="out-btn" onclick="db.auth.signOut()">Abmelden</button>
+    </div>
+  </header>
+
+  <div class="main">
+
+    <div class="stats">
+      <div class="stat"><div class="lbl">Heute</div><div class="val red"    id="s-today">–</div></div>
+      <div class="stat"><div class="lbl">Diese Woche</div><div class="val yellow" id="s-week">–</div></div>
+      <div class="stat"><div class="lbl">Diesen Monat</div><div class="val accent" id="s-month">–</div></div>
+      <div class="stat"><div class="lbl">Einträge heute</div><div class="val green"  id="s-count">–</div></div>
+    </div>
+
+    <div class="g2">
+      <div class="card">
+        <h2>Ausgabe eintragen</h2>
+        <div class="fg"><label>Betrag (CHF)</label><input type="number" id="i-amt"  placeholder="0.00" min="0" step="0.01" /></div>
+        <div class="fg"><label>Beschreibung</label><input type="text"   id="i-desc" placeholder="z.B. Mittagessen" /></div>
+        <div class="row2">
+          <div class="fg">
+            <label>Kategorie</label>
+            <select id="i-cat">
+              <option value="Essen">🍔 Essen</option>
+              <option value="Transport">🚌 Transport</option>
+              <option value="Einkauf">🛒 Einkauf</option>
+              <option value="Freizeit">🎮 Freizeit</option>
+              <option value="Gesundheit">💊 Gesundheit</option>
+              <option value="Sonstiges" selected>📦 Sonstiges</option>
+            </select>
+          </div>
+          <div class="fg"><label>Datum</label><input type="date" id="i-date" /></div>
+        </div>
+        <button class="btn" id="add-btn" onclick="addExpense()">Eintragen</button>
+      </div>
+
+      <div class="card">
+        <h2>Heutige Ausgaben</h2>
+        <div class="list" id="today-list"><div class="empty">Keine Einträge heute</div></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="tabs">
+        <button class="active" data-tab="7">7 Tage</button>
+        <button data-tab="30">30 Tage</button>
+        <button data-tab="cat">Kategorien</button>
+      </div>
+      <canvas id="chart"></canvas>
+    </div>
+
+    <div class="card">
+      <h2>Verlauf</h2>
+      <div class="list" id="hist-list"><div class="empty">Keine Einträge</div></div>
+    </div>
+
+  </div>
+</div>
+
+<div id="toast"></div>
+
+<script>
+const SUPABASE_URL = 'https://iykhnptcnailzzmnpyqe.supabase.co';
+const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Iml5a2hucHRjbmFpbHp6bW5weXFlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzg1ODAzNDIsImV4cCI6MjA5NDE1NjM0Mn0.GQsCa099C4e-HuJIz5wAoKYXrHl4fOgMS8dryTCyOdU';
+const db = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
+const CATS = { Essen:'#ff6b6b', Transport:'#4dabf7', Einkauf:'#51cf66', Freizeit:'#cc5de8', Gesundheit:'#ffd43b', Sonstiges:'#8b8fa8' };
+
+let user = null;
+let expenses = [];
+let chartObj = null;
+let activeTab = '7';
+let authMode = 'in';
+
+// ── Helpers ──────────────────────────────────────────
+const chf  = n => 'CHF ' + (+n).toFixed(2);
+const toDay = () => new Date().toISOString().slice(0, 10);
+const daysAgo = n => { const d = new Date(); d.setDate(d.getDate() - n); return d.toISOString().slice(0, 10); };
+const monthStart = () => { const d = new Date(); d.setDate(1); return d.toISOString().slice(0, 10); };
+const weekStart  = () => daysAgo(6);
+
+function toast(msg, type = 'ok') {
+  const el = document.getElementById('toast');
+  el.textContent = msg; el.className = 'show ' + type;
+  clearTimeout(el._t); el._t = setTimeout(() => el.className = '', 2800);
+}
+
+function badge(cat) {
+  const c = CATS[cat] || '#8b8fa8';
+  return `<span class="badge" style="background:${c}22;color:${c}">${cat}</span>`;
+}
+
+// ── Auth ─────────────────────────────────────────────
+function setTab(t) {
+  authMode = t;
+  document.getElementById('tab-in').classList.toggle('active', t === 'in');
+  document.getElementById('tab-up').classList.toggle('active', t === 'up');
+  document.getElementById('a-btn').textContent = t === 'in' ? 'Anmelden' : 'Registrieren';
+  document.getElementById('auth-msg').className = 'auth-msg';
+}
+
+function setAuthMsg(msg, type) {
+  const el = document.getElementById('auth-msg');
+  el.textContent = msg; el.className = 'auth-msg ' + type;
+}
+
+async function doAuth() {
+  const email = document.getElementById('a-email').value.trim();
+  const pw    = document.getElementById('a-pw').value;
+  if (!email || !pw) { setAuthMsg('Bitte E-Mail und Passwort eingeben.', 'err'); return; }
+
+  const btn = document.getElementById('a-btn');
+  btn.disabled = true;
+  document.getElementById('auth-msg').className = 'auth-msg';
+
+  const fn = authMode === 'in'
+    ? db.auth.signInWithPassword({ email, password: pw })
+    : db.auth.signUp({ email, password: pw });
+
+  const { error, data } = await fn;
+  btn.disabled = false;
+
+  if (error) { setAuthMsg(error.message, 'err'); return; }
+  if (authMode === 'up' && !data.session) {
+    setAuthMsg('Bestätigungs-E-Mail gesendet — bitte E-Mail bestätigen.', 'ok');
+  }
+}
+
+// ── App ───────────────────────────────────────────────
+function showApp(u) {
+  user = u;
+  document.getElementById('auth-screen').style.display = 'none';
+  document.getElementById('app-screen').style.display  = 'block';
+  document.getElementById('h-email').textContent = u.email;
+  document.getElementById('h-date').textContent  =
+    new Date().toLocaleDateString('de-CH', { weekday:'long', day:'numeric', month:'long', year:'numeric' });
+  document.getElementById('i-date').value = toDay();
+}
+
+function showAuth() {
+  user = null; expenses = [];
+  document.getElementById('auth-screen').style.display = 'flex';
+  document.getElementById('app-screen').style.display  = 'none';
+}
+
+// ── Data ──────────────────────────────────────────────
+async function load() {
+  const { data, error } = await db
+    .from('expenses').select('*')
+    .gte('date', daysAgo(30))
+    .order('date', { ascending: false })
+    .order('created_at', { ascending: false });
+  if (error) { toast('Ladefehler: ' + error.message, 'err'); return; }
+  expenses = data || [];
+  render();
+}
+
+function render() {
+  renderStats();
+  renderToday();
+  renderHist();
+  renderChart(activeTab);
+}
+
+function renderStats() {
+  const t  = toDay();
+  const ws = weekStart();
+  const ms = monthStart();
+  const sum = arr => arr.reduce((s, e) => s + +e.amount, 0);
+  document.getElementById('s-today').textContent = chf(sum(expenses.filter(e => e.date === t)));
+  document.getElementById('s-week').textContent  = chf(sum(expenses.filter(e => e.date >= ws)));
+  document.getElementById('s-month').textContent = chf(sum(expenses.filter(e => e.date >= ms)));
+  document.getElementById('s-count').textContent = expenses.filter(e => e.date === t).length;
+}
+
+function renderToday() {
+  const el   = document.getElementById('today-list');
+  const list = expenses.filter(e => e.date === toDay());
+  if (!list.length) { el.innerHTML = '<div class="empty">Keine Einträge heute</div>'; return; }
+  el.innerHTML = list.map(e => itemHTML(e, false)).join('');
+}
+
+function renderHist() {
+  const el = document.getElementById('hist-list');
+  if (!expenses.length) { el.innerHTML = '<div class="empty">Noch keine Einträge</div>'; return; }
+  el.innerHTML = expenses.map(e => itemHTML(e, true)).join('');
+}
+
+function itemHTML(e, showDate) {
+  return `<div class="item">
+    <div class="inf">
+      <div class="desc">${e.description || '–'}${badge(e.category)}</div>
+      ${showDate ? `<div class="meta">${e.date}</div>` : ''}
+    </div>
+    <div class="amt">${chf(e.amount)}</div>
+    <button class="del" onclick="del('${e.id}')">✕</button>
+  </div>`;
+}
+
+function renderChart(tab) {
+  if (chartObj) { chartObj.destroy(); chartObj = null; }
+  const ctx = document.getElementById('chart').getContext('2d');
+
+  if (tab === '7' || tab === '30') {
+    const days = +tab;
+    const labels = [], values = [];
+    for (let i = days - 1; i >= 0; i--) {
+      const d = daysAgo(i);
+      labels.push(d.slice(5));
+      values.push(expenses.filter(e => e.date === d).reduce((s, e) => s + +e.amount, 0));
+    }
+    chartObj = new Chart(ctx, {
+      type: 'bar',
+      data: { labels, datasets: [{ data: values, backgroundColor: 'rgba(108,99,255,.55)', borderColor: '#6c63ff', borderWidth: 1, borderRadius: 4 }] },
+      options: {
+        plugins: { legend: { display: false }, tooltip: { callbacks: { label: c => ' CHF ' + c.parsed.y.toFixed(2) } } },
+        scales:  { x: { ticks: { color: '#8b8fa8' }, grid: { color: '#2e3248' } }, y: { ticks: { color: '#8b8fa8' }, grid: { color: '#2e3248' }, beginAtZero: true } }
+      }
+    });
+  } else {
+    const cats = {};
+    expenses.forEach(e => { cats[e.category] = (cats[e.category] || 0) + +e.amount; });
+    const labels = Object.keys(cats);
+    chartObj = new Chart(ctx, {
+      type: 'doughnut',
+      data: { labels, datasets: [{ data: Object.values(cats), backgroundColor: labels.map(l => CATS[l] || '#8b8fa8'), borderColor: '#1a1d27', borderWidth: 3 }] },
+      options: { plugins: { legend: { labels: { color: '#e8eaf6' } }, tooltip: { callbacks: { label: c => ` ${c.label}: CHF ${c.parsed.toFixed(2)}` } } } }
+    });
+  }
+}
+
+// ── Add / Delete ──────────────────────────────────────
+async function addExpense() {
+  const amt  = parseFloat(document.getElementById('i-amt').value);
+  const desc = document.getElementById('i-desc').value.trim();
+  const cat  = document.getElementById('i-cat').value;
+  const date = document.getElementById('i-date').value;
+
+  if (!amt || amt <= 0) { toast('Bitte einen gültigen Betrag eingeben', 'err'); return; }
+  if (!date)            { toast('Bitte ein Datum wählen', 'err'); return; }
+
+  const btn = document.getElementById('add-btn');
+  btn.disabled = true; btn.textContent = 'Wird gespeichert…';
+
+  const { error } = await db.from('expenses').insert({ amount: amt, description: desc, category: cat, date, user_id: user.id });
+
+  btn.disabled = false; btn.textContent = 'Eintragen';
+  if (error) { toast('Fehler: ' + error.message, 'err'); return; }
+
+  document.getElementById('i-amt').value  = '';
+  document.getElementById('i-desc').value = '';
+  toast('CHF ' + amt.toFixed(2) + ' gespeichert ✓');
+  await load();
+}
+
+async function del(id) {
+  const { error } = await db.from('expenses').delete().eq('id', id);
+  if (error) { toast('Fehler beim Löschen', 'err'); return; }
+  toast('Eintrag gelöscht');
+  await load();
+}
+
+// ── Tabs ──────────────────────────────────────────────
+document.querySelectorAll('.tabs button').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.tabs button').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    activeTab = btn.dataset.tab;
+    renderChart(activeTab);
+  });
+});
+
+// ── Enter-Taste ───────────────────────────────────────
+['a-email','a-pw'].forEach(id => document.getElementById(id).addEventListener('keydown', e => { if (e.key === 'Enter') doAuth(); }));
+['i-amt','i-desc'].forEach(id => document.getElementById(id).addEventListener('keydown', e => { if (e.key === 'Enter') addExpense(); }));
+
+// ── Session ───────────────────────────────────────────
+db.auth.onAuthStateChange(async (event, session) => {
+  if (session?.user) {
+    showApp(session.user);
+    await load();
+  } else {
+    showAuth();
+  }
+});
+</script>
+</body>
+</html>
